@@ -2,8 +2,9 @@
 
 namespace App\Livewire;
 
-use Livewire\Component;
+use Carbon\Carbon;
 
+use Livewire\Component;
 use Google\Analytics\Data\V1beta\Filter;
 use Google\Analytics\Data\V1beta\Metric;
 use Google\Analytics\Data\V1beta\DateRange;
@@ -16,13 +17,79 @@ use Google\Analytics\Data\V1beta\Client\BetaAnalyticsDataClient;
 
 class Home extends Component
 {
+    public $analytics = null;
+    public $starting, $ending;
     public function render()
     {
         return view('livewire.home');
     }
 
-    // Active Users from UK & US
+    // Total active Users from UK & US
+    // Total PageViews & eventCount
     public function fetch()
+    {
+        $credentialsPath = storage_path('app/google/' . config('app.filename'));
+        $property_id = config('app.property_id');
+        $client = new BetaAnalyticsDataClient([
+            'credentials' => $credentialsPath
+        ]);
+        $request = (new RunReportRequest())
+            ->setProperty('properties/' . $property_id)
+            ->setDateRanges([
+                new DateRange([
+                    'start_date' => Carbon::parse($this->starting)->format('Y-m-d'),
+                    'end_date' => Carbon::parse($this->ending)->format('Y-m-d'),
+                ]),
+            ])
+            ->setDimensions([
+                new Dimension([
+                    'name' => 'country',
+                ]),
+            ])
+            ->setMetrics([
+                new Metric([
+                    'name' => 'screenPageViews',
+                ]),
+                new Metric([
+                    'name' => 'eventCount',
+                ]),
+                new Metric([
+                    'name' => 'activeUsers',
+                ]),
+            ]);
+        $response = $client->runReport($request);
+        $totalActiveUsersUS = 0;
+        $totalActiveUsersUK = 0;
+        $data = [];
+        foreach ($response->getRows() as $row) {
+            $country = $row->getDimensionValues()[0]->getValue();
+            $screenPageViews = (int) $row->getMetricValues()[0]->getValue();
+            $eventCount = (int) $row->getMetricValues()[1]->getValue();
+            $activeUsers = (int) $row->getMetricValues()[2]->getValue();
+            if ($country === 'United States') {
+                $totalActiveUsersUS += $activeUsers;
+            } elseif ($country === 'United Kingdom') {
+                $totalActiveUsersUK += $activeUsers;
+            }
+            $data[] = [
+                'country' => $country,
+                'screenPageViews' => $screenPageViews,
+                'eventCount' => $eventCount,
+                'activeUsers' => $activeUsers,
+            ];
+        }
+        $totals = [
+            'US' => $totalActiveUsersUS,
+            'UK' => $totalActiveUsersUK,
+        ];
+        $this->analytics = [
+            'report' => $data,
+            'totals' => $totals,
+        ];
+    }
+
+    // Totla active Users from UK & US
+    /*public function fetch()
     {
         $credentialsPath = storage_path('app/google/' . config('app.filename'));
         $property_id = config('app.property_id');
@@ -65,7 +132,7 @@ class Home extends Component
             'UK' => $totalActiveUsersUK,
         ];
         dd($data);
-    }
+    }*/
 
     // Active Users from a country
     /*public function fetch()
@@ -104,7 +171,7 @@ class Home extends Component
         dd($data);
     }*/
 
-    // PageViews - eventCount
+    // PageViews & eventCount
     /*public function fetch()
     {
         $credentialsPath = storage_path('app/google/' . config('app.filename'));
